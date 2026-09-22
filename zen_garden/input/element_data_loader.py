@@ -30,7 +30,15 @@ TIME_STEP_TYPES = [
 ]
 """List of valid time step types."""
 
-PARAMETER_CHANGE_LOG: dict[str, "str | dict[str, Any]"] = {}
+PARAMETER_CHANGE_LOG: dict[str, "str | dict[str, Any]"] = {
+    # v2.7.5 datasets did not declare the v3 lower-capacity limits.
+    "capacity_lower_limit": {"default_value": 0, "unit": "capacity_limit"},
+    "capacity_lower_limit_energy": {
+        "default_value": 0,
+        "unit": "capacity_limit_energy",
+    },
+    "min_full_load_hours_fraction": {"default_value": 0, "unit": "min_load"},
+}
 """Dictionary to log changes in parameter values.
 
 The keys are the new parameter names. The values are dictionaries with the default value
