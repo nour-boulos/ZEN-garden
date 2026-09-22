@@ -7,6 +7,7 @@ from .capacity_addition_min import CapacityAdditionMin
 from .capacity_addition_unbounded import CapacityAdditionUnbounded
 from .capacity_existing import CapacityExisting
 from .capacity_investment_existing import CapacityInvestmentExisting
+from .capacity_investment_fixed import CapacityInvestmentFixed
 from .capacity_limit import CapacityLimit
 from .capacity_lower_limit import CapacityLowerLimit
 from .capex_capacity_existing import CapexCapacityExisting
@@ -26,6 +27,7 @@ from .opex_specific_variable import OpexSpecificVariable
 TECHNOLOGY_PARAMETERS: list[type[GenericParameter]] = [
     CapacityExisting,
     CapacityInvestmentExisting,
+    CapacityInvestmentFixed,
     CapacityAdditionMin,
     CapacityAdditionMax,
     CapacityAdditionUnbounded,

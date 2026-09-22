@@ -246,11 +246,14 @@ class System(ConfigBase):
     conduct_time_series_aggregation: bool = False
     optimized_years: int = 1
     interval_between_years: int = 1
+    use_scenariotree: bool = False
     use_rolling_horizon: bool = False
     years_in_rolling_horizon: int = 1
     years_in_decision_horizon: int = 1
     use_capacities_existing: bool = True
     allow_investment: bool = True
+    investment_mode: Literal["optimize", "fixed"] = "optimize"
+    fixed_investments_file: str | None = None
     storage_charge_discharge_binary: bool = False
 
 

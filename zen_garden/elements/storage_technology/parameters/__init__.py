@@ -2,6 +2,7 @@
 
 from zen_garden.model.component_types.parameter import GenericParameter
 
+from .capacity_investment_fixed_energy import CapacityInvestmentFixedEnergy
 from .capex_specific_storage import CapexSpecificStorage
 from .efficiency_charge import EfficiencyCharge
 from .efficiency_discharge import EfficiencyDischarge
@@ -18,6 +19,7 @@ STORAGE_TECHNOLOGY_PARAMETERS: list[type[GenericParameter]] = [
     FlowStorageInflow,
     SelfDischarge,
     CapexSpecificStorage,
+    CapacityInvestmentFixedEnergy,
 ]
 
 __all__ = [
@@ -28,5 +30,6 @@ __all__ = [
     "FlowStorageInflow",
     "SelfDischarge",
     "CapexSpecificStorage",
+    "CapacityInvestmentFixedEnergy",
     "STORAGE_TECHNOLOGY_PARAMETERS",
 ]

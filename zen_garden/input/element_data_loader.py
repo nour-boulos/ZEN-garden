@@ -208,8 +208,23 @@ class ElementDataLoader:
                 default_value,
                 df_output_generic=df_output,
             )
-        # finally apply the scenario_factor and return df_output
-        return df_output_generic * scenario_factor
+        # Apply ordinary scenario changes before node-local tree changes.
+        df_output_generic = df_output_generic * scenario_factor
+        tree = self.model_schema.scenario_tree
+        if tree is not None and (
+            "set_years" in index_sets or "set_years_entire_horizon" in index_sets
+        ):
+            year_set = (
+                "set_years" if "set_years" in index_sets else "set_years_entire_horizon"
+            )
+            year_header = self.index_names[year_set]
+            node_ids = df_output_generic.index.get_level_values(year_header)
+            factors = [
+                tree.state_multiplier(node, self.element.name, file_name)
+                for node in node_ids
+            ]
+            df_output_generic = df_output_generic * np.asarray(factors)
+        return df_output_generic
 
     def _extract_general_input_data(
         self,
@@ -528,11 +543,16 @@ class ElementDataLoader:
                         default_value,
                         index_sets,
                     )
-                if i not in self.year_specific_ts:
-                    self.year_specific_ts[i] = {}
-                self.year_specific_ts[i][(self.element.name, file_name)] = (
-                    df_output_specific * scenario_factor
-                )
+                if df_input is None or df_input.empty:
+                    continue
+                tree = self.model_schema.scenario_tree
+                node_ids = tree.nodes_for_year(year) if tree is not None else (i,)
+                for node_id in node_ids:
+                    if node_id not in self.year_specific_ts:
+                        self.year_specific_ts[node_id] = {}
+                    self.year_specific_ts[node_id][(self.element.name, file_name)] = (
+                        df_output_specific * scenario_factor
+                    )
 
     def extract_yearly_variation(self, file_name, index_sets):
         """Reads the yearly variation of a time dependent quantity.
@@ -867,7 +887,17 @@ class ElementDataLoader:
                     DeprecationWarning,
                     stacklevel=2,
                 )
-                return df_input
+                if self.model_schema.scenario_tree is None:
+                    return df_input
+                stage_years = self.model_schema.set_time_steps_years
+                if not set(df_input[temporal_header]).issubset(range(len(stage_years))):
+                    raise ValueError(
+                        f"Generic year indices in {file_name} do not match "
+                        "the scenario-tree stages"
+                    )
+                df_input[temporal_header] = df_input[temporal_header].map(
+                    dict(enumerate(stage_years))
+                )
             # assert that correct temporal index_set to get corresponding
             # index_name is given (i.e. set_years for input data
             # with yearly time steps)(otherwise _extract_general_input_data()
@@ -946,17 +976,27 @@ class ElementDataLoader:
                 df_input[temporal_header].isin(self.model_schema.set_time_steps_years)
             ]
             # convert yearly time indices to generic ones
-            year2step = {
-                year: step
-                for year, step in zip(
-                    self.model_schema.set_time_steps_years,
-                    getattr(self.model_schema, yearly_ts),
-                    strict=False,
+            tree = self.model_schema.scenario_tree
+            if tree is not None:
+                df_input = pd.concat(
+                    [
+                        df_input.loc[df_input[temporal_header] == year].assign(
+                            **{temporal_header: node_id}
+                        )
+                        for year in self.model_schema.set_time_steps_years
+                        for node_id in tree.nodes_for_year(year)
+                    ],
+                    ignore_index=True,
                 )
-            }
-            df_input[temporal_header] = df_input[temporal_header].apply(
-                lambda year: year2step[year]
-            )
+            else:
+                year2step = dict(
+                    zip(
+                        self.model_schema.set_time_steps_years,
+                        getattr(self.model_schema, yearly_ts),
+                        strict=False,
+                    )
+                )
+                df_input[temporal_header] = df_input[temporal_header].map(year2step)
         return df_input
 
     @staticmethod

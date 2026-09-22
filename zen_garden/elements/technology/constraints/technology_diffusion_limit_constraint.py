@@ -145,6 +145,7 @@ class TechnologyDiffusionLimitConstraint(GenericConstraint):
         mask_not_transport_not_edge = mask_technology_type & mask_location
         mask_technology_location = mask_transport_edge | mask_not_transport_not_edge
         # create xarray for previous years
+        tree = model_constructor.model_schema.scenario_tree
         years = pd.MultiIndex.from_tuples(
             [
                 (y, py)
@@ -152,7 +153,7 @@ class TechnologyDiffusionLimitConstraint(GenericConstraint):
                     optimization_model.sets["set_years"],
                     optimization_model.sets["set_years"],
                 )
-                if py < y
+                if (py in tree.ancestors(y) if tree is not None else py < y)
             ],
             names=["set_years", "set_years_prev"],
         )
@@ -165,7 +166,11 @@ class TechnologyDiffusionLimitConstraint(GenericConstraint):
             # kdr for capacity additions
             kdr = {
                 (y, py): (1 - knowledge_depreciation_rate)
-                ** (interval_between_years * (y - 1 - py))
+                ** (
+                    tree.node(y).year - tree.node(py).year - interval_between_years
+                    if tree is not None
+                    else interval_between_years * (y - 1 - py)
+                )
                 for y, py in years
             }
             kdr = pd.Series(kdr)
@@ -243,11 +248,22 @@ class TechnologyDiffusionLimitConstraint(GenericConstraint):
             .sum("set_other_technologies")
         )
         # existing capacities
-        delta_years = interval_between_years * (
-            capacity_addition.coords["set_years"]
-            - 1
-            - model_constructor.model_schema.set_years[0]
-        )
+        if tree is None:
+            delta_years = interval_between_years * (
+                capacity_addition.coords["set_years"]
+                - 1
+                - model_constructor.model_schema.set_years[0]
+            )
+        else:
+            nodes = model_constructor.model_schema.set_years
+            delta_years = xr.DataArray(
+                [
+                    tree.node(node).year - tree.node(0).year - interval_between_years
+                    for node in nodes
+                ],
+                coords={"set_years": nodes},
+                dims="set_years",
+            )
         lifetime_existing = optimization_model.parameters.lifetime_existing
         lifetime = optimization_model.parameters.lifetime
         kdr_existing = (1 - knowledge_depreciation_rate) ** (

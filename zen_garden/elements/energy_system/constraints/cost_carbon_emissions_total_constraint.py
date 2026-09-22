@@ -31,8 +31,13 @@ class CostCarbonEmissionsTotalConstraint(GenericConstraint):
         :math:`\\pi^{\\mathrm{CO_2,bud}}`: carbon price for budget overshoot. This cost
         is assigned only to the last modeled year.
         """
+        tree = model_constructor.model_schema.scenario_tree
         mask_last_year = [
-            year == model_constructor.model_schema.set_years[-1]
+            (
+                year in tree.leaves
+                if tree is not None
+                else year == model_constructor.model_schema.set_years[-1]
+            )
             for year in model_constructor.model_schema.set_years
         ]
 

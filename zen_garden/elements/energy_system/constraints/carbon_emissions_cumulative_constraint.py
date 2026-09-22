@@ -30,18 +30,47 @@ class CarbonEmissionsCumulativeConstraint(GenericConstraint):
             for year in model_constructor.model_schema.set_years
         ]
 
+        cumulative = model_constructor.optimization_model.variables[
+            "carbon_emissions_cumulative"
+        ]
+        annual = model_constructor.optimization_model.variables[
+            "carbon_emissions_annual"
+        ]
+        tree = model_constructor.model_schema.scenario_tree
+        if tree is None:
+            cumulative_previous = cumulative.shift(set_years=1)
+            annual_previous = annual.shift(set_years=1)
+        else:
+            nodes = model_constructor.model_schema.set_years
+            parent_ids = xr.DataArray(
+                [
+                    tree.parent(node) if tree.parent(node) is not None else node
+                    for node in nodes
+                ],
+                coords={"set_years": nodes},
+                dims="set_years",
+            )
+            has_parent = xr.DataArray(
+                [tree.parent(node) is not None for node in nodes],
+                coords={"set_years": nodes},
+                dims="set_years",
+            )
+            cumulative_previous = (
+                cumulative.sel(set_years=parent_ids)
+                .assign_coords(set_years=nodes)
+                .where(has_parent)
+            )
+            annual_previous = (
+                annual.sel(set_years=parent_ids)
+                .assign_coords(set_years=nodes)
+                .where(has_parent)
+            )
         lhs = (
-            model_constructor.optimization_model.variables[
-                "carbon_emissions_cumulative"
-            ]
-            - model_constructor.optimization_model.variables[
-                "carbon_emissions_cumulative"
-            ].shift(set_years=1)
-            - model_constructor.optimization_model.variables[
-                "carbon_emissions_annual"
-            ].shift(set_years=1)
+            cumulative
+            - cumulative_previous
+            - annual_previous
             * (model_constructor.config.system.interval_between_years - 1)
-            - model_constructor.optimization_model.variables["carbon_emissions_annual"]
+            - annual
         )
         cumulative_existing = (
             model_constructor.optimization_model.parameters.carbon_emissions_cumulative_existing

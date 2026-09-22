@@ -17,6 +17,7 @@ from .technology_construction_time_constraint import (
     TechnologyConstructionTimeConstraint,
 )
 from .technology_diffusion_limit_constraint import TechnologyDiffusionLimitConstraint
+from .technology_fixed_investment_constraint import TechnologyFixedInvestmentConstraint
 from .technology_lifetime_constraint import TechnologyLifetimeConstraint
 from .technology_max_capacity_addition_constraint import (
     TechnologyMaxCapacityAdditionConstraint,
@@ -34,6 +35,7 @@ TECHNOLOGY_CONSTRAINTS: list[type[GenericConstraint]] = [
     TechnologyConstructionTimeConstraint,
     TechnologyLifetimeConstraint,
     TechnologyDiffusionLimitConstraint,
+    TechnologyFixedInvestmentConstraint,
     CostCapexYearlyConstraint,
     CostCapexYearlyTotalConstraint,
     CostOpexYearlyConstraint,
@@ -55,6 +57,7 @@ __all__ = [
     "TechnologyCapacityLowerLimitConstraint",
     "TechnologyConstructionTimeConstraint",
     "TechnologyDiffusionLimitConstraint",
+    "TechnologyFixedInvestmentConstraint",
     "TechnologyLifetimeConstraint",
     "TechnologyMaxCapacityAdditionConstraint",
     "TechnologyMinCapacityAdditionConstraint",

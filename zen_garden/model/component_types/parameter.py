@@ -34,6 +34,7 @@ class GenericParameter(ABC):
     input_name: ClassVar[str | None] = None
     input_indices: ClassVar[tuple[str, ...] | None] = None
     dependencies: ClassVar[list[str]] = []
+    fixed_replay_only: ClassVar[bool] = False
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

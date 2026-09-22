@@ -29,10 +29,15 @@ class NetPresentCostConstraint(GenericConstraint):
         :math:`\\Delta y`: interval between planning periods
         """
         optimization_model = model_constructor.optimization_model
+        tree = model_constructor.model_schema.scenario_tree
         factor = pd.Series(index=model_constructor.model_schema.set_years)
         for year in model_constructor.model_schema.set_years:
             ### auxiliary calculations
-            if year == model_constructor.model_schema.set_years_entire_horizon[-1]:
+            if (
+                year in tree.leaves
+                if tree is not None
+                else year == model_constructor.model_schema.set_years_entire_horizon[-1]
+            ):
                 interval_between_years = 1
             else:
                 interval_between_years = (
@@ -43,8 +48,12 @@ class NetPresentCostConstraint(GenericConstraint):
                 (
                     (1 / (1 + optimization_model.parameters.discount_rate))
                     ** (
-                        model_constructor.config.system.interval_between_years
-                        * (year - model_constructor.model_schema.set_years[0])
+                        (
+                            tree.node(year).year - tree.node(0).year
+                            if tree is not None
+                            else model_constructor.config.system.interval_between_years
+                            * (year - model_constructor.model_schema.set_years[0])
+                        )
                         + _intermediate_time_step
                     )
                 )

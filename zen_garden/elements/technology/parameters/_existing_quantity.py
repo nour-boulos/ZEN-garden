@@ -57,8 +57,14 @@ def _still_active_vintages(
     """
     interval = model_constructor.config.system.interval_between_years
     years = list(model_constructor.model_schema.set_years)
-    year = xr.DataArray(years, coords={"set_years": years}, dims="set_years")
-    elapsed = (year - years[0]) * interval
+    tree = model_constructor.model_schema.scenario_tree
+    if tree is None:
+        elapsed_values = [(year - years[0]) * interval for year in years]
+    else:
+        elapsed_values = [tree.node(node).year - tree.node(0).year for node in years]
+    elapsed = xr.DataArray(
+        elapsed_values, coords={"set_years": years}, dims="set_years"
+    )
 
     lifetime_overhang = lifetime_existing - lifetime
     active_when_older = elapsed >= lifetime_overhang

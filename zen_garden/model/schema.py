@@ -9,6 +9,8 @@ from zen_garden.config import Config
 from zen_garden.elements import ELEMENT_TYPE_CLASSES
 from zen_garden.elements.energy_system import EnergySystem
 from zen_garden.model.element import Element
+from zen_garden.model.fixed_investments import FixedInvestments
+from zen_garden.model.scenario_tree import ScenarioTree
 from zen_garden.workflow_step import workflow_step
 
 T = TypeVar("T", bound=Element)
@@ -31,6 +33,8 @@ class ModelSchema:
         self.set_carriers: list[str] = []
         self._set_hours_all_years: list[int] | None = None
         self._set_years: list[int] | None = None
+        self.scenario_tree: ScenarioTree | None = None
+        self.fixed_investments: FixedInvestments | None = None
         self._elements: defaultdict[str, list[Element]] = defaultdict(list)
 
     def register_element(self, element: Element) -> None:
@@ -102,6 +106,13 @@ class ModelSchema:
     def set_hours_all_years(self) -> list[int]:
         if self._set_hours_all_years is not None:
             return self._set_hours_all_years
+        if self.scenario_tree is not None:
+            return list(
+                range(
+                    self.config.system.unaggregated_time_steps_per_year
+                    * len(self.scenario_tree.nodes)
+                )
+            )
         return list(
             range(
                 self.config.system.unaggregated_time_steps_per_year
@@ -117,6 +128,8 @@ class ModelSchema:
     def set_years(self) -> list[int]:
         if self._set_years is not None:
             return self._set_years
+        if self.scenario_tree is not None:
+            return list(self.scenario_tree.nodes)
         return list(range(self.config.system.optimized_years))
 
     @set_years.setter
@@ -125,6 +138,8 @@ class ModelSchema:
 
     @property
     def set_years_entire_horizon(self) -> list[int]:
+        if self.scenario_tree is not None:
+            return list(self.scenario_tree.nodes)
         return list(range(self.config.system.optimized_years))
 
     @property

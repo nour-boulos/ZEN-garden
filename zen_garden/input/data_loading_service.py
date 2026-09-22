@@ -33,10 +33,18 @@ class DataLoadingService:
             element.prepare_input_data()
 
         for parameter in self._parameter_order():
+            if (
+                parameter.fixed_replay_only
+                and self.model_schema.config.system.investment_mode != "fixed"
+            ):
+                continue
             logging.info(f"Loading parameter {parameter.name}...")
             for element in elements:
                 if parameter in element.parameters:
                     parameter.store_input_data(element)
+
+        if self.model_schema.fixed_investments is not None:
+            self.model_schema.fixed_investments.validate_consumed()
 
         for element in elements:
             element.finalize_input_data()

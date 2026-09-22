@@ -31,6 +31,12 @@ class TechnologyConstraint(GenericConstraint, ABC):
             year,
             use_depreciation_time,
         )
+        tree = model_constructor.model_schema.scenario_tree
+        if tree is not None:
+            if first_lifetime_year is None:
+                return ()
+            path = tree.path(year)
+            return path[path.index(first_lifetime_year) :]
         first_lifetime_year = max(
             first_lifetime_year,
             model_constructor.model_schema.set_years[0],
@@ -72,4 +78,16 @@ class TechnologyConstraint(GenericConstraint, ABC):
             )
             - 1
         )
+        tree = model_constructor.model_schema.scenario_tree
+        if tree is not None:
+            if del_lifetime < 0:
+                return None
+            current_year = tree.node(year).year
+            eligible = [
+                node
+                for node in tree.path(year)
+                if current_year - tree.node(node).year
+                <= del_lifetime * model_constructor.config.system.interval_between_years
+            ]
+            return eligible[0] if eligible else None
         return year - del_lifetime

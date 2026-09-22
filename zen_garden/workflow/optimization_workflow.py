@@ -21,7 +21,9 @@ from zen_garden.input.time_series_aggregation import TimeSeriesAggregation
 from zen_garden.input.unit_converter import UnitConverter
 from zen_garden.model.element_factory import ElementFactory
 from zen_garden.model.element_registry import ElementRegistry
+from zen_garden.model.fixed_investments import FixedInvestments
 from zen_garden.model.optimization_model import OptimizationModel
+from zen_garden.model.scenario_tree import ScenarioTree
 from zen_garden.model.schema import ModelSchema
 from zen_garden.model.time_steps import TimeStepsDicts
 from zen_garden.service_container import ServiceContainer
@@ -114,6 +116,35 @@ class OptimizationWorkflow:
         )
         # Register service: scenario_dict; instance: the initialized scenario mapping.
         self.service_container.register("scenario_dict", self.scenario_dict)
+
+        if self.config.system.use_scenariotree:
+            if self.config.system.use_rolling_horizon:
+                raise ValueError("Scenario trees do not support rolling horizons yet")
+            if self.config.system.conduct_time_series_aggregation:
+                raise ValueError(
+                    "Scenario trees do not support time-series aggregation yet"
+                )
+            tree_path = Path(self.config.analysis.dataset) / "scenariotree.yaml"
+            self.model_schema.scenario_tree = ScenarioTree.from_file(
+                tree_path, self.model_schema.set_time_steps_years
+            )
+            self.service_container.register(
+                "scenario_tree", self.model_schema.scenario_tree
+            )
+        if self.config.system.investment_mode == "fixed":
+            if self.model_schema.scenario_tree is None:
+                raise ValueError("Fixed replay requires a scenario tree")
+            if not self.config.system.allow_investment:
+                raise ValueError("Fixed replay requires allow_investment=True")
+            fixed_file = self.config.system.fixed_investments_file
+            if fixed_file is None:
+                raise ValueError("Fixed replay requires fixed_investments_file")
+            fixed_path = Path(fixed_file)
+            if not fixed_path.is_absolute():
+                fixed_path = Path(self.config.analysis.dataset) / fixed_path
+            self.model_schema.fixed_investments = FixedInvestments.from_file(
+                fixed_path, self.model_schema.scenario_tree.nodes
+            )
 
         # Input data checks are used to validate the dataset and to resolve the
         # technology set (see _validate_dataset / _register_elements). Created

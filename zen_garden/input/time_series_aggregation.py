@@ -541,6 +541,9 @@ class TimeSeriesAggregation(object):
                 new_ts = self.add_year_specific_ts(
                     element, ts, new_ts, header_set_time_steps
                 )
+                new_ts = self.apply_scenario_tree_state(
+                    element, ts, new_ts, header_set_time_steps
+                )
                 # overwrite time series
                 setattr(element, ts, new_ts)
 
@@ -561,8 +564,28 @@ class TimeSeriesAggregation(object):
                 new_ts = self.add_year_specific_ts(
                     element, ts, new_ts, header_set_time_steps
                 )
+                new_ts = self.apply_scenario_tree_state(
+                    element, ts, new_ts, header_set_time_steps
+                )
                 # overwrite time series
                 setattr(element, ts, new_ts)
+
+    def apply_scenario_tree_state(self, element, ts_name, ts, hour_header):
+        """Apply a time-series state factor only to its own scenario-tree node."""
+        tree = self.model_schema.scenario_tree
+        if tree is None:
+            return ts
+        for node_id in tree.nodes:
+            factor = tree.state_multiplier(node_id, element.name, ts_name)
+            if factor == 1:
+                continue
+            base_hours = self.time_steps.decode_time_step(node_id, "yearly")
+            operation_hours = self.time_steps.encode_time_step(
+                base_hours, time_step_type="operation"
+            )
+            mask = ts.index.get_level_values(hour_header).isin(operation_hours)
+            ts.loc[mask] *= factor
+        return ts
 
     def multiply_yearly_variation(self, element, ts_name, ts, year_specific=None):
         """Multiplies time series with the yearly variation of the time series.

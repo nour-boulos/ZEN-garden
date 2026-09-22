@@ -166,4 +166,8 @@ class TechnologyConstructionTimeConstraint(GenericConstraint):
         interval = model_constructor.config.system.interval_between_years
         # conservative estimate of construction time (ceil)
         del_construction_time = int(np.ceil(construction_time / interval))
+        tree = model_constructor.model_schema.scenario_tree
+        if tree is not None:
+            ancestor = tree.ancestor_steps(year, del_construction_time)
+            return ancestor if ancestor is not None else -1
         return year - del_construction_time
