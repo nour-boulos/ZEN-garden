@@ -505,6 +505,13 @@ class Results:
             list[int]: A list of years for the specified scenario.
         """
         scenario = self._solution_loader.find_scenario(scenario_name)
+        if scenario.scenario_tree is not None:
+            return sorted(
+                {
+                    scenario.scenario_tree.node(node).year
+                    for node in scenario.scenario_tree.nodes
+                }
+            )
         ref_year = scenario.system.reference_year
         interval_between_years = scenario.system.interval_between_years
         return [

@@ -14,6 +14,7 @@ from pint import UnitRegistry
 from xarray.backends.netCDF4_ import NetCDF4DataStore
 
 from zen_garden.config import Analysis, Solver, System
+from zen_garden.model.scenario_tree import ScenarioTree
 from zen_garden.postprocess.results.component_map import ComponentMap
 from zen_garden.postprocess.results.component_type import ComponentType
 from zen_garden.postprocess.results.timestep_map import TimestepMap
@@ -200,6 +201,7 @@ class Scenario:
         )
         self._component_map: ComponentMap | None = None
         self._time_steps: TimestepMap | None = None
+        self._scenario_tree: ScenarioTree | None = None
 
     @property
     def analysis(self) -> Analysis:
@@ -227,6 +229,38 @@ class Scenario:
                 self.path / "system.json", System, System.model_construct
             )
         return self._system
+
+    @property
+    def scenario_tree(self) -> ScenarioTree | None:
+        """Return saved scenario-tree metadata, if this is a tree run."""
+        if not self.system.use_scenariotree:
+            return None
+        if self._scenario_tree is None:
+            years = [
+                self.system.reference_year + i * self.system.interval_between_years
+                for i in range(self.system.optimized_years)
+            ]
+            self._scenario_tree = ScenarioTree.from_file(
+                self.path / "scenariotree.json", years
+            )
+        return self._scenario_tree
+
+    @property
+    def node_metadata(self) -> list[dict[str, int | float | bool | None]]:
+        """Describe saved nodes without confusing IDs with calendar years."""
+        tree = self.scenario_tree
+        if tree is None:
+            return []
+        return [
+            {
+                "node_id": node_id,
+                "parent": tree.parent(node_id),
+                "year": tree.node(node_id).year,
+                "probability": tree.probability(node_id),
+                "final": node_id in tree.leaves,
+            }
+            for node_id in tree.nodes
+        ]
 
     @property
     def benchmarking(self) -> dict[str, Any]:
@@ -469,7 +503,12 @@ class Scenario:
 
         sequence_timesteps = self._get_sequence_time_steps(timestep_type)
         if year is None:
-            years = [i for i in range(0, self.system.optimized_years)]
+            tree = self.scenario_tree
+            years = (
+                list(tree.nodes)
+                if tree is not None
+                else list(range(0, self.system.optimized_years))
+            )
         else:
             year = self._convert_year2ts(year)
             years = [year]
@@ -627,7 +666,12 @@ class Scenario:
         )
 
         if year is None:
-            years = list(range(0, self.system.optimized_years))
+            tree = self.scenario_tree
+            years = (
+                list(tree.nodes)
+                if tree is not None
+                else list(range(0, self.system.optimized_years))
+            )
         else:
             years = [self._convert_year2ts(year)]
 
@@ -666,6 +710,37 @@ class Scenario:
         ans = self._convert_ts2year(ans)
         ans = self._rename_index(ans)
         return ans
+
+    def get_path_total(
+        self, component_name: str, leaf_node: int
+    ) -> pd.DataFrame | pd.Series:
+        """Return raw per-node totals along one complete future path."""
+        tree = self.scenario_tree
+        if tree is None:
+            raise ValueError("Path totals require a scenario tree")
+        if leaf_node not in tree.leaves:
+            raise ValueError(f"Node {leaf_node} is not a terminal tree node")
+        path = list(tree.path(leaf_node))
+        totals = self.get_total(component_name)
+        if isinstance(totals, pd.Series) and set(path).issubset(totals.index):
+            return totals.loc[path]
+        if isinstance(totals, pd.DataFrame) and set(path).issubset(totals.columns):
+            return totals.loc[:, path]
+        raise ValueError(f"Component {component_name} has no per-node totals")
+
+    def get_expected_total(self, component_name: str) -> pd.Series | float:
+        """Probability-weight per-node totals while preserving location axes."""
+        tree = self.scenario_tree
+        if tree is None:
+            raise ValueError("Expected totals require a scenario tree")
+        nodes = list(tree.nodes)
+        weights = pd.Series({node: tree.probability(node) for node in nodes})
+        totals = self.get_total(component_name)
+        if isinstance(totals, pd.Series) and set(nodes).issubset(totals.index):
+            return float(totals.loc[nodes].mul(weights).sum())
+        if isinstance(totals, pd.DataFrame) and set(nodes).issubset(totals.columns):
+            return totals.loc[:, nodes].mul(weights, axis=1).sum(axis=1)
+        raise ValueError(f"Component {component_name} has no per-node totals")
 
     def get_dual(
         self,
@@ -855,6 +930,13 @@ class Scenario:
     def _convert_ts2year(self, df: FrameOrSeries) -> FrameOrSeries:
         """Converts the yearly ts column to the corresponding year."""
         df = df.copy()
+        if self.scenario_tree is not None:
+            # Calendar years repeat across branches; preserve the unique node ID.
+            if isinstance(df, pd.Series):
+                df.index.name = "node_id"
+            else:
+                df.columns.name = "node_id"
+            return df
         if isinstance(df, pd.Series):
             year_index = df.index
         else:
@@ -877,6 +959,19 @@ class Scenario:
     def _convert_year2ts(self, year: int) -> int:
         """Converts the year to the corresponding time step."""
         assert isinstance(year, int), f"Year must be an integer, not {type(year)}."
+        tree = self.scenario_tree
+        if tree is not None:
+            if year in tree.nodes:
+                return year
+            nodes = tree.nodes_for_year(year)
+            if len(nodes) == 1:
+                return nodes[0]
+            if nodes:
+                raise ValueError(
+                    f"Calendar year {year} has multiple scenario-tree nodes "
+                    f"{nodes}; select a node ID instead"
+                )
+            raise KeyError(f"Year or node {year} is not in the scenario tree")
         ry = self.system.reference_year
         del_y = self.system.interval_between_years
         all_years = [ry + i * del_y for i in range(self.system.optimized_years)]
@@ -1016,7 +1111,12 @@ class Scenario:
         system = self.system
         discount_rate = cast(float, self.get_values("discount_rate").squeeze())
 
-        years = list(range(0, self.system.optimized_years))
+        tree = self.scenario_tree
+        years = (
+            list(tree.nodes)
+            if tree is not None
+            else list(range(0, self.system.optimized_years))
+        )
         annuity = pd.Series(index=years, dtype=float)
         optimized_years = self._get_optimized_years()
 
@@ -1025,23 +1125,23 @@ class Scenario:
             start_year = [y for y in optimized_years if y <= year][-1]
             interval_between_years = system.interval_between_years
             interval_between_years_this_year = (
-                self.system.interval_between_years if year != years[-1] else 1
+                1
+                if tree is not None and year in tree.leaves
+                else self.system.interval_between_years if year != years[-1] else 1
+            )
+            elapsed = (
+                tree.node(year).year - tree.node(start_year).year
+                if tree is not None
+                else interval_between_years * (year - start_year)
             )
 
             if discount_to_first_step:
                 annuity[year] = interval_between_years_this_year * (
-                    (1 / (1 + discount_rate))
-                    ** (interval_between_years * (year - start_year))
+                    (1 / (1 + discount_rate)) ** elapsed
                 )
             else:
                 annuity[year] = sum(
-                    (
-                        (1 / (1 + discount_rate))
-                        ** (
-                            interval_between_years * (year - start_year)
-                            + _intermediate_time_step
-                        )
-                    )
+                    ((1 / (1 + discount_rate)) ** (elapsed + _intermediate_time_step))
                     for _intermediate_time_step in range(
                         0, interval_between_years_this_year
                     )

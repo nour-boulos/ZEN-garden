@@ -141,6 +141,7 @@ class Postprocess:
         self.save_component_map(component_map)
 
         self.save_system()
+        self.save_scenario_tree()
         self.save_analysis()
         self.save_scenarios()
         self.save_solver()
@@ -354,6 +355,13 @@ class Postprocess:
         else:
             dirname = self.name_dir
         self._write_json_file(dirname / "system.json", self.config.system.model_dump())
+
+    def save_scenario_tree(self):
+        """Persist the validated tree alongside the scenario configuration."""
+        tree = self.model_schema.scenario_tree
+        if tree is None:
+            return
+        self._write_json_file(self.name_dir / "scenariotree.json", tree.to_dict())
 
     def save_analysis(self):
         """Saves the analysis dict as json."""
