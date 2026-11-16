@@ -23,6 +23,10 @@ class TechnologyCapacityLowerLimitConstraint(GenericConstraint):
         :math:`\\underline{k}_{h,p,y}`: lower capacity limit
         """
 
+        system = model_constructor.config.system
+        if not system.allow_investment:
+            return
+
         # In TechnologyRules, we access variables and parameters directly via self
         capacity = model_constructor.optimization_model.variables["capacity"]
         capacity_lower_limit = (

@@ -4,7 +4,6 @@ Compilation  of the optimization problem.
 
 import logging
 from pathlib import Path
-from typing import Literal
 
 from zen_garden.config import Config
 from zen_garden.input.scenario_utils import ScenarioUtils
@@ -29,14 +28,12 @@ def prepare_scenarios(config: Config, job_index: list[int] | None):
 
 
 def run(
-    config: str | Path = "./config.json",
+    config: str | Path = "./config.yaml",
     dataset: str | Path | None = None,
     job_index: list[int] | None = None,
     folder_output: str | Path | None = None,
     no_solve: bool = False,
     log_level: str | int = logging.INFO,
-    investment_mode: Literal["optimize", "fixed"] | None = None,
-    fixed_investments_file: str | Path | None = None,
 ):
     """Run ZEN-garden.
 
@@ -46,10 +43,10 @@ def run(
     the results.
 
     Args:
-        config_obj (str | Path): Path to the configuration file
-            (e.g. ``config.json``).
+        config (str | Path): Path to the configuration file
+            (e.g. ``config.yaml``).
             If the file is located in the current working directory, the
-            filename alone may be specified. Defaults to ``"./config.json"``.
+            filename alone may be specified. Defaults to ``"./config.yaml"``.
         dataset (str | Path | None): Path to the folder containing the input dataset
             (e.g. ``"./1_base_case"``). If located in the current working
             directory, the folder name alone may be used. Defaults to the
@@ -66,16 +63,13 @@ def run(
             (e.g. ``"INFO"``, ``"DEBUG"``, etc.) or as an integer
             (e.g. ``logging.INFO``, ``logging.DEBUG``, etc.).
             Defaults to ``logging.INFO``.
-        investment_mode: Override the dataset's investment mode for this run.
-        fixed_investments_file: Complete investment policy for fixed replay.
-
     Returns:
         OptimizationSetup: The fully set up and solved optimization problem.
 
     Examples:
         >>> from zen_garden import run, download_example_dataset
         >>> download_example_dataset("1_base_case")
-        >>> run("1_base_case")
+        >>> run(dataset="1_base_case")
     """
     setup_logger(log_level)
 
@@ -83,10 +77,6 @@ def run(
     config_obj = Config.from_file(
         config, dataset_path=dataset, folder_output=folder_output
     )
-    if investment_mode is not None:
-        config_obj.system.investment_mode = investment_mode
-    if fixed_investments_file is not None:
-        config_obj.system.fixed_investments_file = str(fixed_investments_file)
     config_obj.validate_configurations()
 
     # Initialize the model schema. The schema is a blueprint of the

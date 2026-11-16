@@ -1,14 +1,15 @@
-"""Equalities for an explicit fixed-investment stochastic replay."""
+"""Equalities for fixed investments supplied through dataset inputs."""
 
 from zen_garden.model.component_types.constraint import GenericConstraint
 
 
 class TechnologyFixedInvestmentConstraint(GenericConstraint):
-    """Fix power and storage-energy investments without disabling operation."""
+    """Fix power and storage-energy investment decisions to supplied values."""
 
     @classmethod
     def build(cls, model_constructor):
-        if model_constructor.config.system.investment_mode != "fixed":
+        system = model_constructor.config.system
+        if system.allow_investment:
             return
         optimization_model = model_constructor.optimization_model
         investment = optimization_model.variables["capacity_investment"]

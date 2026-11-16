@@ -124,10 +124,7 @@ class ModelConstructor:
             self.parameters, ignore_missing=True
         )
         for parameter in ordered:
-            if (
-                parameter.fixed_replay_only
-                and self.config.system.investment_mode != "fixed"
-            ):
+            if parameter.fixed_replay_only and self.config.system.allow_investment:
                 continue
             parameter.build(self)
 

@@ -99,6 +99,10 @@ class TechnologyDiffusionLimitConstraint(GenericConstraint):
         :math:`\\Delta y`: interval between planning periods
         :math:`\\omega`: parameter which specifies the knowledge spillover rate
         """
+        system = model_constructor.config.system
+        if not system.allow_investment:
+            return
+
         optimization_model = model_constructor.optimization_model
         # load variables and parameters
         capacity_addition = optimization_model.variables["capacity_addition"]

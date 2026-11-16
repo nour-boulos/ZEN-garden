@@ -946,7 +946,10 @@ class ElementDataLoader:
                 file_names_int_off = self.model_schema.parameters_interpolation_off[
                     "parameter_name"
                 ]
-            if file_name not in file_names_int_off:
+            if file_name not in file_names_int_off and file_name not in {
+                "capacity_investment_fixed",
+                "capacity_investment_fixed_energy",
+            }:
                 parameters = df_input.axes[1]
                 for param in parameters:
                     if param not in index_names_column and df_input[param].isna().any():

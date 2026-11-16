@@ -23,6 +23,10 @@ class TechnologyMinCapacityAdditionConstraint(GenericConstraint):
         at location :math:`p` in year :math:`y`
         :math:`\\Delta K_{h,p,y}`: capacity addition
         """
+        system = model_constructor.config.system
+        if not system.allow_investment:
+            return
+
         capacity_addition_min = (
             model_constructor.optimization_model.parameters.capacity_addition_min
         )

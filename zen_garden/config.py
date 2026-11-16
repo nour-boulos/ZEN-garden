@@ -252,8 +252,6 @@ class System(ConfigBase):
     years_in_decision_horizon: int = 1
     use_capacities_existing: bool = True
     allow_investment: bool = True
-    investment_mode: Literal["optimize", "fixed"] = "optimize"
-    fixed_investments_file: str | None = None
     storage_charge_discharge_binary: bool = False
 
 

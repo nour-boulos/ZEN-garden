@@ -28,13 +28,8 @@ class CarbonEmissionsBudgetConstraint(GenericConstraint):
         :math:`y_\\mathrm{H}`: final year of the entire optimization horizon. The
         extrapolation term is omitted there because no intermediate years remain.
         """
-        tree = model_constructor.model_schema.scenario_tree
         m = [
-            (
-                year not in tree.leaves
-                if tree is not None
-                else year != model_constructor.model_schema.set_years_entire_horizon[-1]
-            )
+            year != model_constructor.model_schema.set_years_entire_horizon[-1]
             for year in model_constructor.model_schema.set_years
         ]
 

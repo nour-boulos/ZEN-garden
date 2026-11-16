@@ -16,9 +16,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     Command Line Flags:
         --config (str, optional):
-            Path to a Python or JSON configuration file. If not provided, the
+            Path to a JSON or YAML configuration file. If not provided, the
             configuration is read from the current working directory. Defaults
-            to "./config.json".
+            to "./config.yaml".
 
         --dataset (str, optional):
             Path to the dataset directory. Overrides
@@ -66,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         required=False,
         default="./config.yaml",
-        help="Path to a Python or YAML config file.",
+        help="Path to a JSON or YAML config file.",
     )
     parser.add_argument(
         "--dataset",

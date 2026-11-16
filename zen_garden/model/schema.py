@@ -9,7 +9,6 @@ from zen_garden.config import Config
 from zen_garden.elements import ELEMENT_TYPE_CLASSES
 from zen_garden.elements.energy_system import EnergySystem
 from zen_garden.model.element import Element
-from zen_garden.model.fixed_investments import FixedInvestments
 from zen_garden.model.scenario_tree import ScenarioTree
 from zen_garden.workflow_step import workflow_step
 
@@ -34,7 +33,6 @@ class ModelSchema:
         self._set_hours_all_years: list[int] | None = None
         self._set_years: list[int] | None = None
         self.scenario_tree: ScenarioTree | None = None
-        self.fixed_investments: FixedInvestments | None = None
         self._elements: defaultdict[str, list[Element]] = defaultdict(list)
 
     def register_element(self, element: Element) -> None:
