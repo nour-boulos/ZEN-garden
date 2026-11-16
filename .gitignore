@@ -18,6 +18,8 @@ zen_garden_env/
 *runscript.py
 *test.py
 *__operation*
+reports/*
+/checkpoints/
 
 # pytest monitor
 .pymon
