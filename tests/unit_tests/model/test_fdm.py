@@ -1,4 +1,4 @@
-"""Check shared annual CAPEX accounting and the retained FDM constraints."""
+"""Check FDM shared investment, binary build decisions and annual accounting."""
 
 from pathlib import Path
 from shutil import copytree
@@ -20,6 +20,7 @@ from zen_garden.elements.energy_system.constraints import (
 from zen_garden.elements.energy_system.expressions.total_cost import TotalCost
 from zen_garden.elements.technology.constraints import (
     TechnologyMaxCapacityAdditionConstraint,
+    TechnologyMinCapacityAdditionConstraint,
 )
 from zen_garden.model.schema import ModelSchema
 from zen_garden.workflow.optimization_step import OptimizationStep
@@ -138,8 +139,9 @@ def test_shared_investment_cost_equations(
         assert float(abs(addition.solution.sel(set_years=1)).max()) == 0
 
 
-def test_fdm_direct_bound_keeps_original_binary_semantics(tmp_path):
-    """FDM's upper bound deliberately contains no installation-binary term."""
+@pytest.mark.parametrize("build", [0, 1])
+def test_fdm_capacity_requires_selected_build_binary(tmp_path, build):
+    """A catalogue pipeline can add zero capacity or its full chosen size."""
     context = component_context(tmp_path)
     model = context.optimization_model
     native = model.lp_model
@@ -149,11 +151,50 @@ def test_fdm_direct_bound_keeps_original_binary_semantics(tmp_path):
         binary=True, coords=[years], name="technology_installation"
     )
     model.parameters.capacity_addition_max = indexed([40, 0], set_years=[0, 1])
+    model.parameters.capacity_addition_min = xr.DataArray(40.0)
     TechnologyMaxCapacityAdditionConstraint.build(context)
-    native.add_constraints(installation == 0)
+    TechnologyMinCapacityAdditionConstraint.build(context)
+    native.add_constraints(installation == indexed([build, 0], set_years=[0, 1]))
     native.add_objective(-addition.sum())
     assert native.solve(solver_name="highs", sanitize_zeros=True) == ("ok", "optimal")
-    assert addition.solution.values.tolist() == [40, 0]
+    assert addition.solution.values == pytest.approx([40 * build, 0])
+
+
+def test_fdm_zero_addition_limits_survive_missing_build_binaries(tmp_path):
+    """Masked truck binaries must not remove the later zero-addition bound."""
+    context = component_context(tmp_path)
+    model = context.optimization_model
+    native = model.lp_model
+    technologies = pd.Index(["pipeline", "truck"], name="set_technologies")
+    years = pd.Index([0, 1], name="set_years")
+    addition = native.add_variables(
+        0, 1000, coords=[technologies, years], name="capacity_addition"
+    )
+    installation = native.add_variables(
+        binary=True,
+        coords=[technologies, years],
+        mask=indexed(
+            [[True, True], [False, False]],
+            set_technologies=technologies,
+            set_years=years,
+        ),
+        name="technology_installation",
+    )
+    model.parameters.capacity_addition_max = indexed(
+        [[40, 0], [np.inf, 0]],
+        set_technologies=technologies,
+        set_years=years,
+    )
+    TechnologyMaxCapacityAdditionConstraint.build(context)
+    native.add_constraints(installation.sel(set_technologies="pipeline") == 0)
+    native.add_objective(-addition.sum())
+    assert native.solve(solver_name="highs", sanitize_zeros=True) == ("ok", "optimal")
+    assert addition.solution.sel(set_technologies="pipeline").values == pytest.approx(
+        [0, 0]
+    )
+    assert addition.solution.sel(set_technologies="truck").values == pytest.approx(
+        [1000, 0]
+    )
 
 
 @pytest.mark.parametrize("fdm", [False, True])

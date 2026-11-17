@@ -15,7 +15,8 @@ class TechnologyMaxCapacityAdditionConstraint(GenericConstraint):
             \\overline{\\Delta k}_{h} g_{h,p,y}
             \\geq \\Delta K_{h,p,y}
 
-        FDM mode uses the original FDM direct addition bound, including zeros.
+        FDM mode links positive finite bounds to active installation binaries.
+        Zero bounds and entries without binaries retain direct addition bounds.
         Ordinary mode retains its installation-binary bound and skips zeros.
 
         Notation:
@@ -48,7 +49,15 @@ class TechnologyMaxCapacityAdditionConstraint(GenericConstraint):
 
         if not finite.any():
             return
+        upper_bound = maximum.where(finite, 0)
+        if "technology_installation" in model.lp_model.variables:
+            installation = model.variables["technology_installation"]
+            linked = finite & (maximum > 0) & (installation.labels >= 0)
+            binary_bound = maximum.where(linked, 0) * installation
+            upper_bound = binary_bound.where(
+                linked, upper_bound.broadcast_like(binary_bound.const)
+            )
         model.add_constraint(
             "constraint_technology_max_capacity_addition",
-            addition.where(finite) <= maximum.where(finite, 0),
+            addition.where(finite) <= upper_bound,
         )
