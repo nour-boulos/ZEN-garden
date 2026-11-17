@@ -35,9 +35,9 @@ class Capacity(GenericVariable):
                         tech, capacity_type, loc, existing_id
                     ]
 
-            addition_max = (
-                len(sets["set_years"])
-                * params.capacity_addition_max[tech, capacity_type]
+            addition_max = sum(
+                params.capacity_addition_max[tech, capacity_type, year]
+                for year in sets["set_years"]
             )
             capacity_limit = params.capacity_limit[tech, capacity_type, loc, time]
             return 0, min(

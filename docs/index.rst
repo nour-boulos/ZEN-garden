@@ -68,6 +68,7 @@ Documentation
    files/zen_garden_in_detail/configurations
    files/zen_garden_in_detail/time_representation
    files/zen_garden_in_detail/scenario_tool
+   files/zen_garden_in_detail/stochastic_fdm
    files/zen_garden_in_detail/scaling
    files/zen_garden_in_detail/sets_params_constraints
    files/zen_garden_in_detail/mathematical_formulation

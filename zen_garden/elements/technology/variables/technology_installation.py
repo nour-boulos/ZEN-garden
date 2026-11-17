@@ -52,11 +52,8 @@ class TechnologyInstallation(GenericVariable):
         )
         index_values, index_names = index_sets
         index = MultiIndexHelper(index_values, index_names)
-        sub_mask = (
-            optimization_model.parameters.capacity_addition_max.notnull()
-            & (optimization_model.parameters.capacity_addition_max != np.inf)
-            & (optimization_model.parameters.capacity_addition_max != 0)
-        )
+        maximum = optimization_model.parameters.capacity_addition_max
+        sub_mask = maximum.notnull() & (maximum != np.inf) & (maximum != 0)
         for tech, capacity_type in index.get_unique([0, 1]):
             locations = index.get_values(
                 locs=[tech, capacity_type], levels=2, unique=True

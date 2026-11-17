@@ -247,6 +247,7 @@ class System(ConfigBase):
     optimized_years: int = 1
     interval_between_years: int = 1
     use_scenariotree: bool = False
+    use_stochastic_fdm: bool = False
     use_rolling_horizon: bool = False
     years_in_rolling_horizon: int = 1
     years_in_decision_horizon: int = 1

@@ -20,6 +20,7 @@ from .cost_carbon_emissions_total_constraint import (
     CostCarbonEmissionsTotalConstraint,
 )
 from .cost_total_constraint import CostTotalConstraint
+from .expected_loss_of_load_constraint import ExpectedLossOfLoadConstraint
 from .net_present_cost_constraint import NetPresentCostConstraint
 
 ENERGY_SYSTEM_CONSTRAINTS: list[type[GenericConstraint]] = [
@@ -32,6 +33,7 @@ ENERGY_SYSTEM_CONSTRAINTS: list[type[GenericConstraint]] = [
     CostTotalConstraint,
     CarbonEmissionsBudgetOvershootConstraint,
     CarbonEmissionsAnnualOvershootConstraint,
+    ExpectedLossOfLoadConstraint,
 ]
 
 __all__ = [
@@ -44,4 +46,5 @@ __all__ = [
     "CostCarbonEmissionsTotalConstraint",
     "CostTotalConstraint",
     "NetPresentCostConstraint",
+    "ExpectedLossOfLoadConstraint",
 ]

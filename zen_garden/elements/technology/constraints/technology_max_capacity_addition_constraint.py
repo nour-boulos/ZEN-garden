@@ -15,7 +15,8 @@ class TechnologyMaxCapacityAdditionConstraint(GenericConstraint):
             \\overline{\\Delta k}_{h} g_{h,p,y}
             \\geq \\Delta K_{h,p,y}
 
-        The constraint is omitted for zero, missing, or infinite maximum additions.
+        FDM mode uses the original FDM direct addition bound, including zeros.
+        Ordinary mode retains its installation-binary bound and skips zeros.
 
         Notation:
 
@@ -29,26 +30,25 @@ class TechnologyMaxCapacityAdditionConstraint(GenericConstraint):
         if not system.allow_investment:
             return
 
-        capacity_addition_max = (
-            model_constructor.optimization_model.parameters.capacity_addition_max
-        )
-        mask = (
-            (capacity_addition_max != np.inf)
-            & (capacity_addition_max != 0)
-            & (capacity_addition_max.notnull())
-        )
+        model = model_constructor.optimization_model
+        maximum = model.parameters.capacity_addition_max
+        addition = model.variables["capacity_addition"]
+        finite = maximum.notnull() & (maximum != np.inf)
 
-        # if mask is empty, return None
-        if not mask.any():
-            return None
-        lhs = mask * (
-            capacity_addition_max
-            * model_constructor.optimization_model.variables["technology_installation"]
-            - model_constructor.optimization_model.variables["capacity_addition"]
-        )
-        rhs = 0
-        constraints = lhs >= rhs
+        if not system.use_stochastic_fdm:
+            mask = finite & (maximum != 0)
+            if not mask.any():
+                return
+            installation = model.variables["technology_installation"]
+            lhs = addition - maximum.where(mask, 0) * installation
+            model.add_constraint(
+                "constraint_technology_max_capacity_addition", lhs.where(mask) <= 0
+            )
+            return
 
-        model_constructor.optimization_model.add_constraint(
-            "constraint_technology_max_capacity_addition", constraints
+        if not finite.any():
+            return
+        model.add_constraint(
+            "constraint_technology_max_capacity_addition",
+            addition.where(finite) <= maximum.where(finite, 0),
         )

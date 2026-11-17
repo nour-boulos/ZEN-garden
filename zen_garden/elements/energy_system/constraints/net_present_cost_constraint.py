@@ -59,6 +59,8 @@ class NetPresentCostConstraint(GenericConstraint):
                 )
                 for _intermediate_time_step in range(0, interval_between_years)
             )
+        if model_constructor.config.system.use_stochastic_fdm:
+            factor[:] = 1.0
         term_discounted_cost_total = optimization_model.variables["cost_total"] * factor
 
         lhs = (

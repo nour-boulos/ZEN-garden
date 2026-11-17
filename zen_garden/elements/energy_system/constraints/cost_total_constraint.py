@@ -24,14 +24,21 @@ class CostTotalConstraint(GenericConstraint):
         :math:`C^{\\mathrm{CO_2}}_y`: annual operational expenditures for carbon
         emissions in year :math:`y`
         """
+        model = model_constructor.optimization_model
+        weight = (
+            model.parameters.probability
+            if model_constructor.config.system.use_stochastic_fdm
+            else 1
+        )
+        running_cost = (
+            model.variables["cost_opex_yearly_total"]
+            + model.variables["cost_carrier_total"]
+            + model.variables["cost_carbon_emissions_total"]
+        )
         lhs = (
-            model_constructor.optimization_model.variables["cost_total"]
-            - model_constructor.optimization_model.variables["cost_capex_yearly_total"]
-            - model_constructor.optimization_model.variables["cost_opex_yearly_total"]
-            - model_constructor.optimization_model.variables["cost_carrier_total"]
-            - model_constructor.optimization_model.variables[
-                "cost_carbon_emissions_total"
-            ]
+            model.variables["cost_total"]
+            - model.variables["cost_capex_yearly_total"]
+            - weight * running_cost
         )
         rhs = 0
         constraints = lhs == rhs

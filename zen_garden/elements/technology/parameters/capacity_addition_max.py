@@ -5,7 +5,7 @@ class CapacityAdditionMax(GenericParameter):
     """Parameter which specifies the maximum capacity addition that can be installed."""
 
     name = "capacity_addition_max"
-    indices = ("set_technologies", "set_capacity_types")
+    indices = ("set_technologies", "set_capacity_types", "set_years")
     doc = (
         "Parameter which specifies the maximum capacity addition that can be installed"
     )
