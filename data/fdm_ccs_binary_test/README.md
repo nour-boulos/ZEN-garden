@@ -1,136 +1,109 @@
-# CCS test of FDM shared investment and pipeline build binaries
+# Small CCS cases for FDM cost and pipeline build checks
 
-**Verified result (17 November 2026):** the current FDM port solves the continuous
-CCS case correctly, but does not enforce the intended discrete pipeline builds.
-In the equal-probability fixed-build-cost case it returns **EUR 70**, rather than
-the independent catalogue optimum **EUR 450**. Both pipeline build binaries are
-zero while their capacity is positive. No model formulation was changed to run
-these tests.
+The current continuous case uses one shared annual capital charge plus expected
+annual operation. It chooses **100 tonnes/year** of pipeline capacity at an
+annual total of **EUR 270**. The pipeline's upfront investment is EUR 400, its
+annual charge is EUR 200, and expected operation is EUR 70.
 
-## Status and result files
+The original port and its cost/binary failures are preserved in commit
+`88447656`. See the [feature guide](../../docs/files/zen_garden_in_detail/stochastic_fdm.rst)
+for the current capital correction. Pipeline binary equations are unchanged;
+the native binary cases are reserved for the next step and have not been
+retested with the corrected accounting in this checkpoint.
 
-This checkpoint preserves the literal FDM port before correcting annual-capital
-counting or pipeline binaries. See the [feature documentation](../../docs/files/zen_garden_in_detail/stochastic_fdm.rst)
-for the equations, known limitations and planned correction order. After running
-the checks, inspect `capacity_and_binaries.csv` and `comparison.csv` under
-`checkpoints/stochastic_fixed_investment/09_ccs_binary_test/`.
+## Network and units
 
-## Network and input choices
+The network has source, sink and one directed 1 km corridor. Free 1:1 capture
+converts raw emissions into captured carbon at source. Pipelines and trucks
+transport it to a sink demand of 40 or 100 tonnes/year. The futures are equally
+likely except in the case explicitly using high-demand probability 0.8.
+Raw supply availability and technology characteristics stay constant.
 
-There are two nodes (`source`, `sink`) and one directed corridor of exactly 1 km.
-A free, 1:1 conversion technology turns raw emissions into captured carbon at
-source. Pipelines and trucks transport captured carbon to a sink demand. There
-is no separate storage technology: the demand represents the required delivery.
-Raw emissions can be imported only at source; captured carbon cannot be
-imported. Losses, capture costs, truck capital costs and fixed operating costs
-are zero. Pipeline operation costs EUR 1/tonne; truck operation costs EUR 8/tonne.
+Captured-carbon imports and all exports are prohibited. Demand shedding has
+infinite price and the FDM loss threshold is zero. Capture costs, truck capital,
+transport losses and fixed operation are zero. Pipeline operation costs
+EUR 1/tonne and truck operation EUR 8/tonne.
 
-The physical problem covers one year. The FDM workaround encodes its low- and
-high-demand futures as two fictitious model-year slots, labelled 2026 and 2027.
-Demand is 40 or 100 tonnes; only this demand changes between futures. Raw supply
-availability and all technology characteristics remain the same. Both futures
-are optimized in one model. Investment is optimized in slot 0 and later additions
-are prohibited with a zero `capacity_addition_max`.
+Each operating future has 8760 hours represented by one aggregated timestep.
+Native flow/capacity inputs are tonnes/hour. Annual throughput capacity 100 is
+therefore entered as `100/8760`. The upfront capacity quote is EUR 4 per unit of
+annual throughput, entered as `4*8760` EUR/(tonne/hour). Explicit `distance.csv`
+files set each route to 1 km.
 
-Each slot contains 8760 hours represented by one aggregated operating timestep.
-Inputs for flow and capacity are in tonnes/hour, so a capacity of 60 tonnes/year
-is entered as `60/8760`. A EUR 4 investment coefficient per tonne/year is entered
-as `4*8760` EUR/(tonne/hour). Distance is explicitly provided in `distance.csv`;
-this avoids relying on the geographic distance calculated from node coordinates.
+The two-slot FDM fixtures retain zero discount and lifetime/depreciation 2.
+Their annuity is 1/2. The correction includes one such annual charge rather than
+summing it over both futures. The single-slot deterministic control has
+lifetime/depreciation 1. The separate capital-scaling benchmark uses 5% and
+50-year financial inputs, independently of the number of futures.
 
-FDM cases use zero discount, lifetime 2 and depreciation 2. The existing annuity
-is therefore 1/2, and the two capital charges sum to the upfront investment once.
-The one-slot deterministic control uses lifetime and depreciation 1.
+## Cases and hand accounting
 
-All carriers have `price_shed_demand: .inf`. FDM cases also set
-`expected_loss_of_load: 0`. Solved shedding is zero in every case. The original
-FDM reliability factor 0.5 remains unchanged and has no effect with zero shedding.
+The `continuous_equal` case permits continuous pipeline capacity. The binary
+fixtures provide separate `pipeline_small` and `pipeline_large` technologies
+with sizes 60 and 100 tonnes/year. Their minimum and first-slot maximum additions
+are both set to those sizes. Later additions are zero.
 
-## Cases
+Capacity-priced pipelines cost EUR 4 per unit of annual capacity upfront.
+Fixed-build variants use `double_capex_transport: true`, zero capacity price,
+and EUR 240/km or EUR 400/km fixed build prices. At 1 km these are upfront
+charges EUR 240 and EUR 400. The native model allows both pipelines in parallel,
+so the hand enumeration includes neither, small, large and both.
 
-| Folder under `cases/` | Intended investment choice | Probabilities | Hand optimum EUR | Actual EUR |
-| --- | --- | --- | ---: | ---: |
-| `continuous_equal` | Continuous pipeline capacity | 0.5 / 0.5 | 440 | 440 |
-| `binary_capacity_cost_equal` | 60- or 100-tonne/year builds; cost per capacity | 0.5 / 0.5 | 450 | 440 |
-| `binary_fixed_cost_equal` | 60- or 100-tonne/year builds; fixed build cost | 0.5 / 0.5 | 450 | 70 |
-| `binary_fixed_cost_high_probability` | Same fixed-cost builds | 0.2 / 0.8 | 488 | 88 |
-| `deterministic_binary_control` | Same fixed-cost builds, demand 40 known | 1.0 | 280 | 280 |
+For capacity K and demand D, operation costs
+`min(K,D) + 8*max(D-K,0)`. At zero discount with the two-year financial life,
+the annual capital charge is half the upfront cost. The expected total is that
+single annual charge plus probability-weighted operation.
 
-Each binary pipeline is a separate transport technology. Its minimum and
-first-slot maximum additions both equal its catalogue size: 60 or 100 tonnes/year.
-The capacity-cost variant charges EUR 4 per unit of annual capacity. The
-fixed-build-cost variant uses `double_capex_transport: true`, zero specific
-capacity cost, and fixed distance costs of EUR 240/km or EUR 400/km. At a 1 km
-distance these are EUR 240 and EUR 400 per build. Both variants have the same
-costs when the catalogue size is enforced correctly.
+For continuous capacity K=100 this is EUR 200 capital plus EUR 70 operation,
+giving EUR 270. Under the intended binary builds, the large pipeline has the
+same annual total. The small pipeline costs EUR 120 capital plus EUR 210 expected
+operation, giving EUR 330. These are annual-cost hand calculations; they differ
+from the earlier upfront-normalized benchmark.
 
-The native model permits both pipeline technologies to be built in parallel.
-The hand enumeration therefore includes none, small, large and both. It does not
-assume an extra either/or constraint. Building both is more expensive than the
-optimal choice in every hand-calculated binary case.
+| Case | Intended annual hand optimum EUR | Current checkpoint native verification |
+| --- | ---: | --- |
+| `continuous_equal` | 270 | Verified: 270 |
+| `binary_capacity_cost_equal` | 270 | Deferred to binary checkpoint |
+| `binary_fixed_cost_equal` | 270 | Deferred to binary checkpoint |
+| `binary_fixed_cost_high_probability` | 288 | Deferred to binary checkpoint |
+| `deterministic_binary_control` | 280 | Prior control: 280; ordinary equations unchanged |
 
-## Independent calculation
+New hand tables are generated in `hand_calculations_annual_capex_once/`, leaving
+the earlier `hand_calculations/` results available as historical records.
 
-For installed pipeline capacity K, operation at demand D costs:
+## Reproduction
 
-```text
-operation(K,D) = min(K,D) + 8*max(D-K,0)
-expected total = upfront investment + sum(probability * operation)
-```
-
-At equal probabilities, the intended 60-tonne/year pipeline costs:
-
-```text
-investment:    240
-low operation: 40
-high operation: 60 + 8*40 = 380
-total:         240 + 0.5*40 + 0.5*380 = 450 EUR
-```
-
-The alternatives cost EUR 560 (trucks only), EUR 470 (large pipeline) and EUR 710
-(both pipelines). When high demand has probability 0.8, the large pipeline wins
-at EUR `400 + 0.2*40 + 0.8*100 = 488`.
-
-For continuous investment the minimum is K=40, at EUR
-`160 + 0.5*40 + 0.5*(40 + 8*60) = 440`.
-
-After generation, all candidates and expected flows are saved locally in
-`hand_calculations/all_candidates.csv` and `hand_calculations/expected_results.json`.
-
-## Reproduction and saved outputs
-
-From a fresh source checkout, generate the five native input folders once:
+For a fresh checkout, generate the native inputs once:
 
 ```sh
 .venv/bin/python -m data.fdm_ccs_binary_test.build_dataset
 ```
 
-The generator refuses to overwrite existing case folders. If they already exist,
-proceed directly to the checks. From the repository root, run:
+If the case folders already exist, keep the inputs and update only the selected
+annual-cost hand calculations:
 
 ```sh
-.venv/bin/python -m data.fdm_ccs_binary_test.run_checks
+.venv/bin/python -m data.fdm_ccs_binary_test.build_dataset --hand-only
 ```
 
-**Expected exit code on the tested source is 1.** This indicates failed
-catalogue/benchmark checks, not a solver failure. All five native models reach
-an optimal solution to their actual equations. The runner adds no model
-constraints, bounds or objectives and uses the ordinary v3 `OptimizationStep.solve`
-method with its existing cleanup behavior.
+Run only the continuous financial check at this checkpoint:
 
-Each case output folder under
-`checkpoints/stochastic_fixed_investment/09_ccs_binary_test/`
-contains a solved LP model, all solved variables as CSV and NetCDF, loaded input
-tables, native constraint terms, annual operations, capacities, binary decisions,
-and the case summary. The aggregate log contains the HiGHS solver output.
-Full checks are in `checks.csv`, and costs are in `comparison.csv`.
+```sh
+.venv/bin/python -m data.fdm_ccs_binary_test.run_checks --cases continuous_equal
+```
 
-`build_dataset.py` creates the five native input folders and independent hand
-calculations. It refuses to overwrite existing case folders. Its final output
-was rebuilt in a temporary folder and verified identical to all 140 saved native
-input files. Input hashes are generated in `hand_calculations/input_hashes.csv`.
+Expected exit code is 0. `--cases` can select cases, and `--output PATH` selects
+a separate output folder. The default folder is
+`checkpoints/stochastic_fixed_investment/fdm_ccs_current/`. Omitting `--cases`
+runs the binary cases as well; their retained linkage limitation is a separate
+pending step.
 
-The two Python scripts and this README are deliberately versioned. Generated
-datasets, hand tables and checkpoint files remain local and ignored by Git.
-No uploaded reference data is required. The original
-`data/stochastic_fixed_investment_test` dataset was left unchanged.
+The runner uses the ordinary v3 loading, aggregation, construction and solve
+path. It adds no test constraints or alternative objectives. Full loaded inputs,
+variable CSV/NetCDF solutions, solved LPs, annual operations, capacities,
+capital contributions, comparison tables and logs are saved in the selected
+output folder. The source code is hashed before and after each run.
+
+The scripts and README are versioned. Generated inputs, full hand tables and
+checkpoint results are local and Git-ignored. No large reference dataset is
+required or solved.

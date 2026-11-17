@@ -1,4 +1,4 @@
-"""Small input-only experiments on FDM capital normalization; no formulation edits."""
+"""Check shared annual CAPEX once using unchanged physical financial inputs."""
 
 from __future__ import annotations
 
@@ -22,7 +22,12 @@ from zen_garden.workflow.optimization_workflow import OptimizationWorkflow
 
 ROOT = Path(__file__).resolve().parent
 PROJECT = ROOT.parent.parent
-OUT = PROJECT / "checkpoints/stochastic_fixed_investment/11_capital_scaling_test"
+OUT = (
+    PROJECT
+    / "checkpoints/stochastic_fixed_investment/18_capex_correction/capital_cases"
+)
+CASE_ROOT = ROOT / "cases_annual_capex_once"
+HAND_ROOT = ROOT / "hand_calculations_annual_capex_once"
 BASE = PROJECT / "data/fdm_ccs_binary_test/cases/continuous_equal"
 HOURS = 8760
 RATE = 0.05
@@ -40,12 +45,15 @@ def source_hashes():
     }
 
 
-def build_case(name, copies, normalize):
-    dataset = ROOT / "cases" / name
+def build_case(name, copies, reorder=False):
+    dataset = CASE_ROOT / name
     probabilities = [p / copies for _ in range(copies) for p in PROBABILITIES]
     demands = DEMANDS * copies
     count = len(demands)
-    quote_input = QUOTE / count if normalize else QUOTE
+    if reorder:
+        probabilities = probabilities[1:] + probabilities[:1]
+        demands = demands[1:] + demands[:1]
+    quote_input = QUOTE
     if not dataset.exists():
         shutil.copytree(BASE, dataset)
         system = yaml.safe_load((dataset / "system.yaml").read_text())
@@ -91,7 +99,7 @@ def build_case(name, copies, normalize):
             p * (min(d, capacity) + 8 * max(d - capacity, 0))
             for p, d in zip(probabilities, demands, strict=True)
         )
-        capital = count * ANNUITY * quote_input * capacity
+        capital = ANNUITY * quote_input * capacity
         candidates.append(
             {
                 "case": name,
@@ -99,18 +107,17 @@ def build_case(name, copies, normalize):
                 "capital_EUR": capital,
                 "expected_operation_EUR": operation,
                 "total_EUR": capital + operation,
-                "one_annual_capital_reference_EUR": ANNUITY * QUOTE * capacity
-                + operation,
+                "legacy_repeated_capital_total_EUR": count * capital + operation,
             }
         )
     hand = min(candidates, key=lambda r: r["total_EUR"])
-    write_csv(ROOT / "hand_calculations" / f"{name}.csv", candidates)
+    write_csv(HAND_ROOT / f"{name}.csv", candidates)
     specification = {
         "name": name,
         "slots": count,
         "probabilities": probabilities,
         "demands": demands,
-        "normalized_inputs": normalize,
+        "reordered_futures": reorder,
         "quote_before_test_scaling": QUOTE,
         "quote_loaded": quote_input,
         "hand_optimum": hand,
@@ -194,11 +201,27 @@ def run_case(dataset, specification):
         )
     assert float(abs(model.variables["shed_demand"].solution).max()) < 1e-8
     objective = float(model.lp_model.objective.value)
-    capital = float(model.variables["cost_capex_yearly_total"].solution.sum())
-    expected_capital = (
-        specification["slots"] * ANNUITY * specification["quote_loaded"] * chosen
+    annual_capital = model.variables["cost_capex_yearly_total"].solution
+    expected_capital = ANNUITY * specification["quote_loaded"] * chosen
+    assert np.allclose(annual_capital, expected_capital)
+    running = (
+        model.variables["cost_opex_yearly_total"].solution
+        + model.variables["cost_carrier_total"].solution
+        + model.variables["cost_carbon_emissions_total"].solution
     )
+    capital_contribution = (
+        model.variables["cost_total"].solution - parameters.probability * running
+    )
+    assert np.allclose(
+        capital_contribution,
+        [expected_capital] + [0] * (specification["slots"] - 1),
+    )
+    capital = float(capital_contribution.sum())
     assert np.isclose(capital, expected_capital)
+    assert np.isclose(
+        float(model.variables["net_present_cost"].solution.sum()), objective
+    )
+    dump_array(capital_contribution, folder / "capital_objective_contribution.csv")
     assert np.isclose(objective, specification["hand_optimum"]["total_EUR"])
     annual_rows = []
     for slot, (demand, probability) in enumerate(
@@ -247,9 +270,11 @@ def run_case(dataset, specification):
     result = {
         "case": name,
         "slots": specification["slots"],
-        "normalized_inputs": specification["normalized_inputs"],
+        "reordered_futures": specification["reordered_futures"],
         "pipeline_capacity_tonnes_per_year": chosen,
         "capital_EUR": capital,
+        "annual_capital_each_future_EUR": expected_capital,
+        "sum_annual_capital_variables_EUR": float(annual_capital.sum()),
         "expected_operation_EUR": objective - capital,
         "objective_EUR": objective,
         "hand_objective_EUR": specification["hand_optimum"]["total_EUR"],
@@ -275,14 +300,12 @@ def main():
     (OUT / "source_sha256_before.json").write_text(json.dumps(before, indent=2) + "\n")
     specifications = []
     results = []
-    for count, copies, normalize in (
-        (5, 1, False),
-        (10, 2, False),
-        (5, 1, True),
-        (10, 2, True),
+    for name, copies, reorder in (
+        ("slots_5_unscaled_capex", 1, False),
+        ("slots_10_unscaled_capex", 2, False),
+        ("slots_5_reordered_futures", 1, True),
     ):
-        name = f"slots_{count}_{'scaled_capex' if normalize else 'unchanged_capex'}"
-        dataset, specification = build_case(name, copies, normalize)
+        dataset, specification = build_case(name, copies, reorder)
         specifications.append(specification)
         folder = OUT / name
         folder.mkdir(parents=True, exist_ok=True)
@@ -298,29 +321,26 @@ def main():
         print(json.dumps(result), flush=True)
     # Duplicating each future and halving its probability preserves its distribution.
     assert all(np.isclose(r["expected_demand_tonnes"], 72) for r in results)
-    assert np.isclose(results[2]["objective_EUR"], results[3]["objective_EUR"])
-    assert np.isclose(
-        results[2]["pipeline_capacity_tonnes_per_year"],
-        results[3]["pipeline_capacity_tonnes_per_year"],
-    )
+    assert all(np.isclose(r["objective_EUR"], 181.55347097147296) for r in results)
+    assert all(np.isclose(r["pipeline_capacity_tonnes_per_year"], 100) for r in results)
     after = source_hashes()
     assert before == after
     assert diff_before == subprocess.check_output(
         ["git", "diff", "--binary"], cwd=PROJECT
     )
     (OUT / "source_sha256_after.json").write_text(json.dumps(after, indent=2) + "\n")
-    (ROOT / "hand_calculations/specifications.json").write_text(
+    (HAND_ROOT / "specifications.json").write_text(
         json.dumps(specifications, indent=2) + "\n"
     )
     write_csv(OUT / "comparison.csv", results)
     write_csv(
-        ROOT / "hand_calculations/input_hashes.csv",
+        HAND_ROOT / "input_hashes.csv",
         [
             {
                 "file": str(p.relative_to(ROOT)),
                 "sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
             }
-            for p in sorted((ROOT / "cases").rglob("*"))
+            for p in sorted(CASE_ROOT.rglob("*"))
             if p.is_file()
         ],
     )
@@ -332,10 +352,11 @@ def main():
         "production_source_unchanged": before == after,
         "tracked_diff_unchanged": True,
         "uploaded_dataset_read_or_solved_by_test": False,
-        "normalization_only_in_separate_test_inputs": True,
+        "capex_input_divided_by_future_count": False,
+        "same_result_under_duplication_and_reordering": True,
     }
     (OUT / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    print(f"All four small-model checks passed. Evidence: {OUT}")
+    print(f"All three small-model checks passed. Evidence: {OUT}")
 
 
 if __name__ == "__main__":

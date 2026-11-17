@@ -6,6 +6,7 @@ An exit status of 1 means at least one intended catalogue acceptance check faile
 
 from __future__ import annotations
 
+import argparse
 import contextlib
 import hashlib
 import json
@@ -16,6 +17,7 @@ import subprocess
 import sys
 import traceback
 from importlib.metadata import version
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -25,10 +27,10 @@ from zen_garden.model.schema import ModelSchema
 from zen_garden.workflow.optimization_step import OptimizationStep
 from zen_garden.workflow.optimization_workflow import OptimizationWorkflow
 
-from .build_dataset import HOURS, ROOT, SIZES
+from .build_dataset import CASES, HAND_ROOT, HOURS, ROOT, SIZES
 
 PROJECT = ROOT.parent.parent
-OUT = PROJECT / "checkpoints/stochastic_fixed_investment/09_ccs_binary_test"
+OUT = PROJECT / "checkpoints/stochastic_fixed_investment/fdm_ccs_current"
 CHECKS = []
 
 
@@ -482,19 +484,44 @@ def run_case(name, specification):
         specification["hand_optimum"]["total_EUR"],
     )
     first_capital = float(solution["cost_capex_overnight"].sel(set_years=0).sum())
-    capital_charged = float(model.variables["cost_capex_yearly_total"].solution.sum())
+    annual_capital = model.variables["cost_capex_yearly_total"].solution
+    first_annual_capital = float(annual_capital.sel(set_years=0))
+    running = (
+        model.variables["cost_opex_yearly_total"].solution
+        + model.variables["cost_carrier_total"].solution
+        + model.variables["cost_carbon_emissions_total"].solution
+    )
+    probability = p.probability if config.system.use_stochastic_fdm else 1
+    capital_contribution = (
+        model.variables["cost_total"].solution - probability * running
+    )
+    capital_charged = float(capital_contribution.sum())
+    dump_array(capital_contribution, folder / "capital_objective_contribution.csv")
     expected_operation = sum(
         row["probability"]
         * (sum(row[f"{t}_tonnes"] for t in pipelines) + 8 * row["truck_tonnes"])
         for row in annual_rows
     )
-    near(name, "accounting", "capital charged once", capital_charged, first_capital)
     near(
         name,
         "accounting",
-        "objective matches loaded investment and expected operations",
+        "one annual capital charge in objective",
+        capital_charged,
+        first_annual_capital,
+    )
+    near(
+        name,
+        "accounting",
+        "annual capital variables retained in all futures",
+        float(annual_capital.sum()),
+        slots * first_annual_capital,
+    )
+    near(
+        name,
+        "accounting",
+        "objective matches annual capital and expected operations",
         objective,
-        first_capital + expected_operation,
+        first_annual_capital + expected_operation,
     )
     result = {
         "case": name,
@@ -502,6 +529,8 @@ def run_case(name, specification):
         "actual_objective_EUR": objective,
         "hand_objective_EUR": specification["hand_optimum"]["total_EUR"],
         "actual_upfront_capital_EUR": first_capital,
+        "actual_annual_capital_EUR": first_annual_capital,
+        "actual_capital_in_objective_EUR": capital_charged,
         "actual_expected_operation_EUR": expected_operation,
         "catalogue_passed": all(
             r["passed"]
@@ -526,6 +555,12 @@ def run_case(name, specification):
 
 
 def main():
+    global OUT
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cases", nargs="+", choices=list(CASES))
+    parser.add_argument("--output", type=Path, default=OUT)
+    args = parser.parse_args()
+    OUT = args.output.resolve()
     OUT.mkdir(parents=True, exist_ok=True)
     before = source_hashes()
     (OUT / "source_sha256_before.json").write_text(json.dumps(before, indent=2) + "\n")
@@ -556,11 +591,11 @@ def main():
         )
         + "\n"
     )
-    expectations = json.loads(
-        (ROOT / "hand_calculations/expected_results.json").read_text()
-    )
+    expectations = json.loads((HAND_ROOT / "expected_results.json").read_text())
     rows = []
-    for name, specification in expectations.items():
+    selected_cases = args.cases if args.cases is not None else list(expectations)
+    for name in selected_cases:
+        specification = expectations[name]
         folder = OUT / name
         folder.mkdir(parents=True, exist_ok=True)
         with (folder / "run.log").open("w", buffering=1) as log:
@@ -612,6 +647,8 @@ def main():
         "actual_objective_EUR",
         "hand_objective_EUR",
         "actual_upfront_capital_EUR",
+        "actual_annual_capital_EUR",
+        "actual_capital_in_objective_EUR",
         "actual_expected_operation_EUR",
         "catalogue_passed",
         "benchmark_passed",

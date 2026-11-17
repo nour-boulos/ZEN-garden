@@ -1,4 +1,4 @@
-"""Check the literal FDM equations through the v3 component interfaces."""
+"""Check shared annual CAPEX accounting and the retained FDM constraints."""
 
 from pathlib import Path
 from shutil import copytree
@@ -54,7 +54,7 @@ def component_context(tmp_path, fdm=True):
 
 @pytest.mark.parametrize(
     ("fdm", "high_probability", "expected_capacity", "expected_cost"),
-    [(True, 0.5, 40, 440), (True, 0.8, 100, 488), (False, 0.5, 100, 540)],
+    [(True, 0.5, 100, 270), (True, 0.8, 100, 288), (False, 0.5, 100, 540)],
 )
 def test_shared_investment_cost_equations(
     tmp_path, fdm, high_probability, expected_capacity, expected_cost
@@ -111,7 +111,7 @@ def test_shared_investment_cost_equations(
         set_location="route",
         set_years=0,
     )
-    # Two fictitious slots, annuity 1/2, unchanged upfront coefficient 4.
+    # Annual capital is 4*K/2 in every slot; FDM includes it once.
     native.add_constraints(costs["cost_capex_yearly_total"] == 4 * investment / 2)
     native.add_constraints(
         costs["cost_opex_yearly_total"]
@@ -179,7 +179,84 @@ def test_running_cost_weights_and_discount_switch(tmp_path, fdm):
     NetPresentCostConstraint.build(context)
     native.add_objective(TotalCost.get_expression(context))
     assert native.solve(solver_name="highs", sanitize_zeros=True) == ("ok", "optimal")
-    assert native.objective.value == pytest.approx(146 if fdm else 78 + 158 / 1.1)
+    assert native.objective.value == pytest.approx(138 if fdm else 78 + 158 / 1.1)
+    assert native.variables["cost_capex_yearly_total"].solution.values == pytest.approx(
+        [8, 8]
+    )
+    if fdm:
+        assert native.variables["cost_total"].solution.values == pytest.approx(
+            [8 + 0.25 * 70, 0.75 * 150]
+        )
+
+
+@pytest.mark.parametrize(
+    ("years", "probabilities"),
+    [([5], [1.0]), ([5, 9], [0.0, 1.0]), ([9, 5], [0.75, 0.25])],
+)
+def test_capital_uses_first_model_slot_and_keeps_annual_values(
+    tmp_path, years, probabilities
+):
+    """The shared charge is independent of the first future's label or weight."""
+    context = component_context(tmp_path)
+    context.model_schema.set_years = years
+    context.model_schema.set_years_entire_horizon = years
+    model = context.optimization_model
+    model.parameters.discount_rate = 0.05
+    model.parameters.probability = indexed(probabilities, set_years=years)
+    native = model.lp_model
+    coords = [pd.Index(years, name="set_years")]
+    for name in ("cost_total", "net_present_cost"):
+        native.add_variables(coords=coords, name=name)
+    for name, value in (
+        ("cost_capex_yearly_total", 53.78),
+        ("cost_opex_yearly_total", 20),
+        ("cost_carrier_total", 0),
+        ("cost_carbon_emissions_total", 0),
+    ):
+        variable = native.add_variables(coords=coords, name=name)
+        native.add_constraints(variable == value)
+    CostTotalConstraint.build(context)
+    NetPresentCostConstraint.build(context)
+    native.add_objective(TotalCost.get_expression(context))
+    assert native.solve(solver_name="highs", sanitize_zeros=True) == ("ok", "optimal")
+    assert native.objective.value == pytest.approx(73.78)
+    assert native.variables["cost_capex_yearly_total"].solution.values == pytest.approx(
+        [53.78] * len(years)
+    )
+    expected = [
+        (53.78 if year == years[0] else 0) + probability * 20
+        for year, probability in zip(years, probabilities, strict=True)
+    ]
+    assert native.variables["cost_total"].solution.values == pytest.approx(expected)
+
+
+def test_two_future_hand_example_counts_capital_once(tmp_path):
+    """The EUR 100, two-year, 5% example has annual total EUR 73.780488."""
+    context = component_context(tmp_path)
+    model = context.optimization_model
+    model.parameters.discount_rate = 0.05
+    model.parameters.probability = indexed([0.5, 0.5], set_years=[0, 1])
+    native = model.lp_model
+    coords = [pd.Index([0, 1], name="set_years")]
+    annual_capital = 100 * 0.05 / (1 - 1.05**-2)
+    for name, values in (
+        ("cost_capex_yearly_total", [annual_capital, annual_capital]),
+        ("cost_opex_yearly_total", [10, 30]),
+        ("cost_carrier_total", [0, 0]),
+        ("cost_carbon_emissions_total", [0, 0]),
+    ):
+        variable = native.add_variables(coords=coords, name=name)
+        native.add_constraints(variable == indexed(values, set_years=[0, 1]))
+    for name in ("cost_total", "net_present_cost"):
+        native.add_variables(coords=coords, name=name)
+    CostTotalConstraint.build(context)
+    NetPresentCostConstraint.build(context)
+    native.add_objective(TotalCost.get_expression(context))
+    assert native.solve(solver_name="highs", sanitize_zeros=True) == ("ok", "optimal")
+    assert native.objective.value == pytest.approx(73.78048780487802)
+    assert float(native.variables["net_present_cost"].solution.sum()) == pytest.approx(
+        native.objective.value
+    )
 
 
 def test_original_reliability_factor_and_zero_demand_mask(tmp_path):

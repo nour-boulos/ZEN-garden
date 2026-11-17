@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import hashlib
 import itertools
@@ -11,6 +12,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent
+HAND_ROOT = ROOT / "hand_calculations_annual_capex_once"
 HOURS = 8760
 YEAR = 2026
 SIZES = {"pipeline_small": 60.0, "pipeline_large": 100.0}
@@ -315,6 +317,7 @@ def enumerate_hand_calculations():
                 builds = dict(zip(SIZES, candidate, strict=True))
                 capacity = sum(SIZES[t] * g for t, g in builds.items())
             investment = 4.0 * capacity
+            annual_capital = investment / len(probabilities)
             operating = [min(d, capacity) + 8 * max(d - capacity, 0) for d in demands]
             expected_operation = sum(
                 p * c for p, c in zip(probabilities, operating, strict=True)
@@ -324,10 +327,11 @@ def enumerate_hand_calculations():
                 "builds": json.dumps(builds),
                 "capacity_tonnes_per_year": capacity,
                 "investment_EUR": investment,
+                "annual_capital_EUR": annual_capital,
                 "low_operation_EUR": operating[0],
                 "high_operation_EUR": operating[1] if len(operating) > 1 else "",
                 "expected_operation_EUR": expected_operation,
-                "total_EUR": investment + expected_operation,
+                "total_EUR": annual_capital + expected_operation,
             }
             case_rows.append(row)
         rows.extend(case_rows)
@@ -340,18 +344,26 @@ def enumerate_hand_calculations():
             "pipeline_flow_tonnes": [min(d, capacity) for d in demands],
             "truck_flow_tonnes": [max(d - capacity, 0) for d in demands],
         }
-    write_csv(ROOT / "hand_calculations/all_candidates.csv", rows)
-    (ROOT / "hand_calculations/expected_results.json").write_text(
+    write_csv(HAND_ROOT / "all_candidates.csv", rows)
+    (HAND_ROOT / "expected_results.json").write_text(
         json.dumps(expectations, indent=2) + "\n"
     )
 
 
 def main():
-    for name, specification in CASES.items():
-        build_case(name, specification)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--hand-only",
+        action="store_true",
+        help="Recalculate annual-cost hand results without overwriting native inputs",
+    )
+    args = parser.parse_args()
+    if not args.hand_only:
+        for name, specification in CASES.items():
+            build_case(name, specification)
     enumerate_hand_calculations()
     write_csv(
-        ROOT / "hand_calculations/input_hashes.csv",
+        HAND_ROOT / "input_hashes.csv",
         [
             {
                 "file": str(p.relative_to(ROOT)),
@@ -361,10 +373,12 @@ def main():
             if p.is_file()
         ],
     )
-    print(f"Built {len(CASES)} native datasets under {ROOT / 'cases'}")
     print(
-        "Hand optima: continuous 440; binary equal 450; "
-        "binary high probability 488; deterministic control 280 EUR"
+        f"Native inputs: {ROOT / 'cases'}; annual-cost hand calculations: {HAND_ROOT}"
+    )
+    print(
+        "Annual hand optima: continuous 270; binary equal 270; "
+        "binary high probability 288; deterministic control 280 EUR"
     )
 
 
